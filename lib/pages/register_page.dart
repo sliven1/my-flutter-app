@@ -1,11 +1,10 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:p7/components/load_animation.dart';
+import 'package:p7/components/my_button.dart';
+import 'package:p7/components/my_text_field.dart';
 import 'package:p7/service/auth.dart';
-import 'package:p7/service/databases.dart';
-import 'package:intl/intl.dart';
-import '../components/my_button.dart';
-import '../components/my_text_field.dart';
+import 'register_profile_page.dart';
 
 class RegisterPage extends StatefulWidget {
   final void Function()? onTap;
@@ -16,249 +15,239 @@ class RegisterPage extends StatefulWidget {
 }
 
 class _RegisterPageState extends State<RegisterPage> {
-
-
   final _auth = Auth();
-  final _db = Databases();
+  final _formKey = GlobalKey<FormState>();
 
-
-
-  final TextEditingController nameController = TextEditingController();
   final TextEditingController emailController = TextEditingController();
   final TextEditingController pwController = TextEditingController();
   final TextEditingController confirmController = TextEditingController();
 
-  DateTime? _birthDate;
+  final FocusNode emailFocus = FocusNode();
+  final FocusNode pwFocus = FocusNode();
+  final FocusNode confirmFocus = FocusNode();
 
+  bool _isLoading = false;
 
-  void register() async {
-    final name    = nameController.text.trim();
-    final email   = emailController.text.trim();
-    final pw      = pwController.text;
-    final confirm = confirmController.text;
-
-
-    if ([name, email, pw, confirm].any((field) => field.isEmpty)) {
-      await showDialog(
-        context: context,
-        builder: (_) => const AlertDialog(
-          title: Text('All fields are required'),
-        ),
-      );
-      return;
-    }
-
-
-    final digitReg = RegExp(r'\d');
-    if (digitReg.hasMatch(name)) {
-      await showDialog(
-        context: context,
-        builder: (_) => const AlertDialog(
-          title: Text('Name cannot contain numbers'),
-        ),
-      );
-      return;
-    }
-
-
-    final emailReg = RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$');
-    if (!emailReg.hasMatch(email)) {
-      await showDialog(
-        context: context,
-        builder: (_) => const AlertDialog(
-          title: Text('Please enter a valid email'),
-        ),
-      );
-      return;
-    }
-
-
-    if (pw.length < 6) {
-      await showDialog(
-        context: context,
-        builder: (_) => const AlertDialog(
-          title: Text('Password must be at least 6 characters'),
-        ),
-      );
-      return;
-    }
-
-
-    if (pw != confirm) {
-      await showDialog(
-        context: context,
-        builder: (_) => const AlertDialog(
-          title: Text('Passwords do not match'),
-        ),
-      );
-      return;
-    }
-
-    // 5) Age must be an integer between 1 and 100
-    final today = DateTime.now();
-    var age = today.year - _birthDate!.year;
-    if (today.month < _birthDate!.month ||
-        (today.month == _birthDate!.month && today.day < _birthDate!.day)) {
-      age--;
-    }
-    if(age<1 || age>100){
-      print('Age must be between 1 and 100');
-      return;
-    }
-
-
-    showLoad(context);
-    try {
-      await _auth.registerEmailPassword(email, pw);
-      // On success AuthGate will switch screens automatically
-    } on FirebaseAuthException catch (e) {
-      await showDialog(
-        context: context,
-        builder: (_) => AlertDialog(
-          title: const Text('Registration Error'),
-          content: Text(e.message ?? e.code),
-        ),
-      );
-    } catch (e) {
-      await showDialog(
-        context: context,
-        builder: (_) => AlertDialog(
-          title: const Text('Something Went Wrong'),
-          content: Text(e.toString()),
-        ),
-      );
-    } finally {
-      if (mounted) hideLoad(context);
-      await _db.saveInfoInFirebase(
-          name: nameController.text,
-          email: emailController.text,
-          birthDate: _birthDate!);
-    }
-
-
+  @override
+  void dispose() {
+    emailController.dispose();
+    pwController.dispose();
+    confirmController.dispose();
+    emailFocus.dispose();
+    pwFocus.dispose();
+    confirmFocus.dispose();
+    super.dispose();
   }
 
+  String? _validateEmail(String? value) {
+    if (value == null || value.isEmpty) {
+      return 'Введите email';
+    }
+    final emailReg = RegExp(r'^[\w\-.]+@([\w-]+\.)+[\w-]{2,4}$');
+    if (!emailReg.hasMatch(value)) {
+      return 'Некорректный email';
+    }
+    return null;
+  }
+
+  String? _validatePassword(String? value) {
+    if (value == null || value.isEmpty) {
+      return 'Введите пароль';
+    }
+    if (value.length < 6) {
+      return 'Минимум 6 символов';
+    }
+    return null;
+  }
+
+  String? _validateConfirmPassword(String? value) {
+    if (value == null || value.isEmpty) {
+      return 'Подтвердите пароль';
+    }
+    if (value != pwController.text) {
+      return 'Пароли не совпадают';
+    }
+    return null;
+  }
+
+  void _continueToProfile() async {
+    FocusScope.of(context).unfocus();
+
+    if (!_formKey.currentState!.validate()) {
+      return;
+    }
+
+    // Показываем загрузку только в UI кнопки
+    setState(() => _isLoading = true);
+
+    try {
+      await _auth.registerEmailPassword(
+        emailController.text.trim(),
+        pwController.text,
+      );
+
+      if (mounted) {
+        setState(() => _isLoading = false);
+
+        // Переходим без анимации загрузки
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (context) => RegisterProfilePage(
+              email: emailController.text.trim(),
+            ),
+          ),
+        );
+      }
+    } on FirebaseAuthException catch (e) {
+      if (mounted) {
+        setState(() => _isLoading = false);
+
+        String message;
+        switch (e.code) {
+          case 'email-already-in-use':
+            message = 'Этот email уже используется';
+            break;
+          case 'invalid-email':
+            message = 'Некорректный email';
+            break;
+          case 'weak-password':
+            message = 'Слишком слабый пароль';
+            break;
+          default:
+            message = 'Ошибка регистрации: ${e.message ?? e.code}';
+        }
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(message),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isLoading = false);
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Что-то пошло не так'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-
     return Scaffold(
-
       backgroundColor: Theme.of(context).colorScheme.surface,
-
       body: SafeArea(
-        child: Padding(
+        child: SingleChildScrollView(
           padding: const EdgeInsets.symmetric(horizontal: 25.0),
-          child: Center(
+          child: Form(
+            key: _formKey,
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                const SizedBox(height: 10),
+                const SizedBox(height: 50),
                 Icon(
-                  Icons.lock,
+                  Icons.person_add_rounded,
                   size: 72,
                   color: Theme.of(context).colorScheme.primary,
                 ),
-                const SizedBox(height: 50),
-                Text("Join the hive—build your network today",
+                const SizedBox(height: 30),
+                Text(
+                  "Создайте аккаунт",
                   style: TextStyle(
                     color: Theme.of(context).colorScheme.primary,
-                    fontSize: 18,
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
                   ),
                 ),
-                const SizedBox(height: 50),
-
-                MyTextField(
-                  textEditingController: nameController,
-                  obscureText: false,
-                  hintText: "Enter name",
-                ),
-
                 const SizedBox(height: 10),
+                Text(
+                  "Шаг 1 из 2",
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.primary,
+                    fontSize: 16,
+                  ),
+                ),
+                const SizedBox(height: 40),
 
                 MyTextField(
                   textEditingController: emailController,
                   obscureText: false,
-                  hintText: "Enter email",
+                  hintText: "Email",
+                  focusNode: emailFocus,
+                  keyboardType: TextInputType.emailAddress,
+                  textInputAction: TextInputAction.next,
+                  onFieldSubmitted: (_) {
+                    FocusScope.of(context).requestFocus(pwFocus);
+                  },
+                  validator: _validateEmail,
                 ),
 
-                const SizedBox(height: 10),
+                const SizedBox(height: 15),
 
                 MyTextField(
                   textEditingController: pwController,
                   obscureText: true,
-                  hintText: "Enter password",
+                  hintText: "Пароль",
+                  focusNode: pwFocus,
+                  textInputAction: TextInputAction.next,
+                  onFieldSubmitted: (_) {
+                    FocusScope.of(context).requestFocus(confirmFocus);
+                  },
+                  validator: _validatePassword,
                 ),
 
-                const SizedBox(height: 10),
+                const SizedBox(height: 15),
 
                 MyTextField(
                   textEditingController: confirmController,
                   obscureText: true,
-                  hintText: "Confirm password",
+                  hintText: "Подтвердите пароль",
+                  focusNode: confirmFocus,
+                  textInputAction: TextInputAction.done,
+                  onFieldSubmitted: (_) => _continueToProfile(),
+                  validator: _validateConfirmPassword,
                 ),
 
-                const SizedBox(height: 10),
-
-                GestureDetector(
-                  onTap: () async {
-                    final picked = await showDatePicker(
-                      context: context,
-                      initialDate: DateTime(DateTime.now().year - 18),
-                      firstDate: DateTime(1900),
-                      lastDate: DateTime.now(),
-                    );
-                    if (picked != null && mounted) {
-                      setState(() => _birthDate = picked);
-                    }
-                  },
-                  child: Container(
-                    height: 50,
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    decoration: BoxDecoration(
-                      border: Border.all(color: Colors.grey),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    alignment: Alignment.centerLeft,
-                    child: Text(
-                      _birthDate == null
-                          ? 'Select your birth date'
-                          : DateFormat.yMMMMd().format(_birthDate!),
-                      style: TextStyle(
-                        color: _birthDate == null
-                            ? Colors.grey
-                            : Theme.of(context).colorScheme.onSurface,
-                        fontSize: 16,
-                      ),
-                    ),
-                  ),
-                ),
-
-                const SizedBox(height: 25),
+                const SizedBox(height: 30),
 
                 MyButton(
-                    onTap: register,
-                    text: "Register"),
+                  onTap: _isLoading ? null : _continueToProfile,
+                  text: _isLoading ? "Загрузка..." : "Далее",
+                ),
 
-                const SizedBox(height: 50),
+                const SizedBox(height: 30),
 
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Text("Already a member?", style: TextStyle(color: Theme.of(context).colorScheme.primary),),
+                    Text(
+                      "Уже есть аккаунт?",
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
+                    ),
                     const SizedBox(width: 10),
                     GestureDetector(
                       onTap: widget.onTap,
-                      child: Text("Login now",  style: TextStyle(color: Theme.of(context).colorScheme.primary,
-                          fontWeight: FontWeight.bold)
+                      child: Text(
+                        "Войти",
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.primary,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
-
-                    )
+                    ),
                   ],
-                )
-
+                ),
+                const SizedBox(height: 50),
               ],
-
             ),
           ),
         ),

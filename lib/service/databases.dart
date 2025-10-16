@@ -7,41 +7,40 @@ class Databases{
   final _db = FirebaseFirestore.instance;
   final _auth = FirebaseAuth.instance;
 
-
   Future<void> saveInfoInFirebase({
     required String name,
     required String email,
     required DateTime birthDate,
+    required String city,
+    required String role,
   }) async {
 
     final uid = _auth.currentUser!.uid;
 
-
     final username = email.split("@")[0];
 
-    // Собираем модель UserProfile
+    // Собираем модель UserProfile с новыми полями
     final user = UserProfile(
       uid:      uid,
       name:     name,
       email:    email,
       username: username,
       birthDate: birthDate,
+      city:     city,
+      role:     role,
       bio:      '',
     );
 
-    // 4) Преобразуем её в Map
+    // Преобразуем в Map
     final userMap = user.toMap();
 
-    // 5) Сохраняем в коллекцию "Users", документ с ID = uid
+    // Сохраняем в коллекцию "Users"
     await _db.collection("Users").doc(uid).set(userMap);
   }
 
   Future<UserProfile?> getUserFromFirebase(String uid) async {
     try {
-      // 1) Получаем документ по пути User/{uid}
       final userDoc = await _db.collection("Users").doc(uid).get();
-
-      // 2) Превращаем его в объект-модель
       return UserProfile.fromDocument(userDoc);
     } catch (e) {
       print(e);
@@ -56,6 +55,31 @@ class Databases{
       await _db.collection("Users").doc(uid).update({'bio':bio});
     }
     catch(e){
+      print(e);
+    }
+  }
+
+  // Новый метод для обновления профиля
+  Future<void> updateUserProfile({
+    String? name,
+    String? city,
+    String? role,
+    String? bio,
+  }) async {
+    String uid = Auth().getCurrentUid();
+
+    try {
+      Map<String, dynamic> updates = {};
+
+      if (name != null) updates['name'] = name;
+      if (city != null) updates['city'] = city;
+      if (role != null) updates['role'] = role;
+      if (bio != null) updates['bio'] = bio;
+
+      if (updates.isNotEmpty) {
+        await _db.collection("Users").doc(uid).update(updates);
+      }
+    } catch (e) {
       print(e);
     }
   }
