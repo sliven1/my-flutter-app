@@ -1,43 +1,41 @@
 import 'package:flutter/material.dart';
 
-/// LIGHT — графит-минимал
+/// LIGHT — графит-минимал с акцентом
 final ThemeData lightMode = ThemeData(
   brightness: Brightness.light,
   colorScheme: const ColorScheme(
     brightness: Brightness.light,
 
     // Базовые слои
-    surface:    Color(0xFFF0F0F0),   // карточки / списки
+    surface: Color(0xFFF5F5F7),      // светлее, мягче для глаз
 
+    // Акцент — тонкий синий (как у вас в tertiary)
+    primary: Color(0xFF4A90E2),      // приятный синий
+    onPrimary: Colors.white,
 
-    // «Акцент» = холодный средне-серый
-    primary:    Color(0xFF8E8E93),   // System Gray
-    onPrimary:  Colors.white,        // иконки/текст на серой кнопке
+    // Вторичные — серые
+    secondary: Color(0xFF8E8E93),
+    onSecondary: Colors.white,
+    tertiary: Color(0xFF636366),     // темнее серый
+    onTertiary: Colors.white,
 
-    // Вторичного и третичного цветов нет ― сохраняем монохром
-    secondary:  Color(0xFF8E8E93),
-    onSecondary:Colors.white,
-    tertiary:   Color(0xFF8E8E93),
-    onTertiary: Color(0xFF4A90E2),
+    // Ошибки
+    error: Color(0xFFFF3B30),        // более заметный красный
+    onError: Colors.white,
 
-    // Ошибки (оставим чуть теплее, но всё ещё скромно-серые)
-    error:      Color(0xFFB00020),
-    onError:    Colors.white,
+    // Текст
+    onSurface: Color(0xFF1C1C1E),
 
-    // Контрастный текст
-
-    onSurface:    Color(0xFF1C1C1E),
-
-    // Контейнеры (Material 3)
-    primaryContainer:   Color(0xFFD1D1D6),
+    // Контейнеры
+    primaryContainer: Color(0xFFE3F2FD),   // светло-синий
     secondaryContainer: Color(0xFFE5E5EA),
   ),
 
-  scaffoldBackgroundColor: const Color(0xFFF9F9F9),
+  scaffoldBackgroundColor: const Color(0xFFFFFFFF),  // чистый белый
 
   appBarTheme: const AppBarTheme(
     elevation: 0,
-    backgroundColor: Color(0xFFF0F0F0),
+    backgroundColor: Color(0xFFF5F5F7),
     foregroundColor: Color(0xFF1C1C1E),
     titleTextStyle: TextStyle(
       fontSize: 18,

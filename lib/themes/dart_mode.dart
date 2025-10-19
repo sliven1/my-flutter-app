@@ -4,23 +4,23 @@ final ThemeData darkMode = ThemeData(
   colorScheme: const ColorScheme(
     brightness: Brightness.dark,
 
-    surface:    Color(0xFF1C1C1E),   // карточки / модалки
+    surface: Color(0xFF1C1C1E),
 
-    primary:    Color(0xFF8E8E93),   // тот же нейтральный серый
-    onPrimary:  Colors.black,
+    primary: Color(0xFF5BA4F5),      // светлее синий для dark mode
+    onPrimary: Colors.black,
 
-    secondary:  Color(0xFF8E8E93),
-    onSecondary:Colors.black,
-    tertiary:   Color(0xFF8E8E93),
-    onTertiary: Color(0xFF4A90E2),
+    secondary: Color(0xFF8E8E93),
+    onSecondary: Colors.black,
+    tertiary: Color(0xFF636366),
+    onTertiary: Colors.white,
 
-    error:      Color(0xFFCF6679),
-    onError:    Colors.black,
+    error: Color(0xFFFF453A),
+    onError: Colors.black,
 
-    onSurface:    Colors.white,
+    onSurface: Colors.white,
 
-    primaryContainer:   Color(0xFF636366),
-    secondaryContainer: Color(0xFF48484A),
+    primaryContainer: Color(0xFF1E3A5F),
+    secondaryContainer: Color(0xFF2C2C2E),
   ),
 
   scaffoldBackgroundColor: const Color(0xFF000000),

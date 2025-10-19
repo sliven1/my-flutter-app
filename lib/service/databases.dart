@@ -59,6 +59,34 @@ class Databases{
     }
   }
 
+  Stream<List<UserProfile>> getTutorsStream() {
+    return _db
+        .collection("Users")
+        .where('role', isEqualTo: 'Преподаватель')
+        .snapshots()
+        .map((snapshot) {
+      return snapshot.docs.map((doc) {
+        return UserProfile.fromDocument(doc);
+      }).toList();
+    });
+  }
+
+  Future<List<String>> getAllCities() async {
+    try {
+      final snapshot = await _db.collection("Users").get();
+      final cities = snapshot.docs
+          .map((doc) => (doc.data()['city'] as String?) ?? '')
+          .where((city) => city.isNotEmpty)
+          .toSet()
+          .toList();
+      cities.sort();
+      return cities;
+    } catch (e) {
+      print('Error loading cities: $e');
+      return [];
+    }
+  }
+
   // Новый метод для обновления профиля
   Future<void> updateUserProfile({
     String? name,

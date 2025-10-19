@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:p7/components/my_driver_tile.dart';
+import 'package:p7/pages/find_tutor_page.dart';
 import 'package:p7/pages/home_page.dart';
 import 'package:p7/pages/profile_page.dart';
 import 'package:p7/pages/setting_page.dart';
@@ -63,38 +64,25 @@ class MyDrawer extends StatelessWidget {
             },
           ),
 
-
-
           MyDrawerTile(
-            title: "W e a t h e r",
-            iconData: Icons.cloud,
+            title: "S e a r c h",
+            iconData: Icons.person_search,
             onTap: (){
               Navigator.pop(context);
 
               Navigator.push(context, MaterialPageRoute(
-                  builder: (context) => WeatherPage()
+                  builder: (context) => FindTutorPage()
               ),
               );
             },
           ),
-          MyDrawerTile(
-            title: "M u s i c",
-            iconData: Icons.music_note,
-            onTap: (){
-              Navigator.pop(context);
 
-              Navigator.push(context, MaterialPageRoute(
-                  builder: (context) => SongPage()
-              ),
-              );
-            },
-          ),
           MyDrawerTile(
             title: "S e t t i n g s",
             iconData: Icons.settings,
             onTap: (){
               Navigator.pop(context);
-              
+
               Navigator.push(context, MaterialPageRoute(builder: (context) => SettingPage()
               ),
               );
