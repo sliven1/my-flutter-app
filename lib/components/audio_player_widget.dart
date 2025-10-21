@@ -1,5 +1,6 @@
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
+import 'dart:math' as math;
 
 class ChatAudioPlayer extends StatefulWidget {
   final String url;
@@ -8,21 +9,45 @@ class ChatAudioPlayer extends StatefulWidget {
     super.key,
     required this.url,
     required this.isCurrentUser,
-});
+  });
 
   @override
   State<ChatAudioPlayer> createState() => _ChatAudioPlayerState();
 }
 
-class _ChatAudioPlayerState extends State<ChatAudioPlayer> {
+class _ChatAudioPlayerState extends State<ChatAudioPlayer> with SingleTickerProviderStateMixin {
   final AudioPlayer _player = AudioPlayer();
   bool _isPlaying = false;
   Duration _duration = Duration.zero;
   Duration _position = Duration.zero;
+  late AnimationController _rippleController;
 
   @override
   void initState() {
     super.initState();
+
+    _rippleController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1500),
+    );
+
+    _player.setAudioContext(
+      AudioContext(
+        iOS: AudioContextIOS(
+          category: AVAudioSessionCategory.playback,
+          options: {
+            AVAudioSessionOptions.defaultToSpeaker,
+          },
+        ),
+        android: AudioContextAndroid(
+          isSpeakerphoneOn: true,
+          stayAwake: true,
+          contentType: AndroidContentType.music,
+          usageType: AndroidUsageType.media,
+          audioFocus: AndroidAudioFocus.gain,
+        ),
+      ),
+    );
 
     _player.onDurationChanged.listen((d) {
       setState(() => _duration = d);
@@ -33,7 +58,15 @@ class _ChatAudioPlayerState extends State<ChatAudioPlayer> {
     });
 
     _player.onPlayerStateChanged.listen((state) {
-      setState(() => _isPlaying = state == PlayerState.playing);
+      setState(() {
+        _isPlaying = state == PlayerState.playing;
+        if (_isPlaying) {
+          _rippleController.repeat();
+        } else {
+          _rippleController.stop();
+          _rippleController.reset();
+        }
+      });
     });
   }
 
@@ -45,10 +78,10 @@ class _ChatAudioPlayerState extends State<ChatAudioPlayer> {
     }
   }
 
-
   @override
   void dispose() {
     _player.dispose();
+    _rippleController.dispose();
     super.dispose();
   }
 
@@ -60,56 +93,244 @@ class _ChatAudioPlayerState extends State<ChatAudioPlayer> {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme
-        .of(context)
-        .colorScheme;
+    final scheme = Theme.of(context).colorScheme;
+
     final bubbleColor = widget.isCurrentUser
-        ? scheme.primaryContainer // мои
-        : scheme.secondaryContainer; // чужие
-    final accentColor = widget.isCurrentUser
         ? scheme.primary
-        : scheme.secondary;
+        : scheme.secondaryContainer;
+
+    final iconColor = widget.isCurrentUser
+        ? scheme.onPrimary
+        : scheme.primary;
+
+    final textColor = widget.isCurrentUser
+        ? scheme.onPrimary
+        : scheme.onSurface;
+
+    final progressColor = widget.isCurrentUser
+        ? scheme.onPrimary
+        : scheme.primary;
 
     return Align(
       alignment: widget.isCurrentUser
           ? Alignment.centerRight
           : Alignment.centerLeft,
       child: Container(
-        padding: const EdgeInsets.all(5),
-        margin: const EdgeInsets.symmetric(vertical: 2.5, horizontal: 25),
+        padding: const EdgeInsets.all(10),
+        margin: const EdgeInsets.symmetric(vertical: 3, horizontal: 12),
+        constraints: const BoxConstraints(maxWidth: 220),
         decoration: BoxDecoration(
           color: bubbleColor,
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(18),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.12),
+              blurRadius: 6,
+              offset: const Offset(0, 2),
+            ),
+          ],
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            IconButton(
-              onPressed: _togglePlay,
-              icon: Icon(
-                _isPlaying ? Icons.pause : Icons.play_arrow,
-                color: accentColor,
+            // Кнопка с пульсирующей анимацией
+            Stack(
+              alignment: Alignment.center,
+              children: [
+                // Пульсирующие круги при воспроизведении
+                if (_isPlaying)
+                  AnimatedBuilder(
+                    animation: _rippleController,
+                    builder: (context, child) {
+                      return CustomPaint(
+                        painter: RipplePainter(
+                          animation: _rippleController,
+                          color: iconColor,
+                        ),
+                        size: const Size(50, 50),
+                      );
+                    },
+                  ),
+
+                // Кнопка
+                GestureDetector(
+                  onTap: _togglePlay,
+                  child: Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      color: widget.isCurrentUser
+                          ? Colors.white.withValues(alpha: 0.25)
+                          : scheme.primaryContainer,
+                      shape: BoxShape.circle,
+                    ),
+                    child: AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 200),
+                      transitionBuilder: (child, animation) {
+                        return ScaleTransition(
+                          scale: animation,
+                          child: RotationTransition(
+                            turns: animation,
+                            child: child,
+                          ),
+                        );
+                      },
+                      child: Icon(
+                        _isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                        key: ValueKey(_isPlaying),
+                        color: iconColor,
+                        size: 22,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(width: 12),
+
+            // Прогресс и время
+            Flexible(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Анимированные звуковые волны
+                  SizedBox(
+                    height: 24,
+                    child: AnimatedBuilder(
+                      animation: _rippleController,
+                      builder: (context, child) {
+                        return CustomPaint(
+                          painter: SoundWavesPainter(
+                            animation: _rippleController,
+                            color: progressColor,
+                            isPlaying: _isPlaying,
+                          ),
+                          size: const Size(double.infinity, 24),
+                        );
+                      },
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+
+                  // Прогресс бар
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(2),
+                    child: SizedBox(
+                      height: 3,
+                      child: LinearProgressIndicator(
+                        value: _duration.inSeconds == 0
+                            ? 0
+                            : _position.inSeconds / _duration.inSeconds,
+                        color: progressColor,
+                        backgroundColor: widget.isCurrentUser
+                            ? Colors.white.withValues(alpha: 0.25)
+                            : scheme.surface,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+
+                  // Время (как в Telegram)
+                  Text(
+                    _position.inSeconds > 0
+                        ? _format(_duration - _position)
+                        : _format(_duration),
+                    style: TextStyle(
+                      color: textColor.withValues(alpha: 0.9),
+                      fontSize: 11,
+                      fontWeight: FontWeight.w500,
+                      letterSpacing: 0.3,
+                    ),
+                  ),
+                ],
               ),
             ),
-            Text(
-              _format(_position),
-              style: TextStyle(color: scheme.onSurface),
-            ),
-            const SizedBox(width: 8),
-            SizedBox(
-              width: 100,
-              child: LinearProgressIndicator(
-                value: _duration.inSeconds == 0
-                    ? 0
-                    : _position.inSeconds / _duration.inSeconds,
-                color: accentColor,
-                backgroundColor: scheme.surfaceVariant,
-                minHeight: 4,
-              ),
-            ),
+            const SizedBox(width: 6),
           ],
         ),
       ),
     );
+  }
+}
+
+// Пульсирующие круги вокруг кнопки
+class RipplePainter extends CustomPainter {
+  final Animation<double> animation;
+  final Color color;
+
+  RipplePainter({required this.animation, required this.color});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final center = Offset(size.width / 2, size.height / 2);
+    final paint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.0;
+
+    // Рисуем 2 пульсирующих круга с разной задержкой
+    for (int i = 0; i < 2; i++) {
+      final progress = (animation.value + (i * 0.5)) % 1.0;
+      final radius = 20 + (progress * 15);
+      final opacity = 1.0 - progress;
+
+      paint.color = color.withValues(alpha: opacity * 0.4);
+      canvas.drawCircle(center, radius, paint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(RipplePainter oldDelegate) => true;
+}
+
+// Анимированные звуковые волны
+class SoundWavesPainter extends CustomPainter {
+  final Animation<double> animation;
+  final Color color;
+  final bool isPlaying;
+
+  SoundWavesPainter({
+    required this.animation,
+    required this.color,
+    required this.isPlaying,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color.withValues(alpha: isPlaying ? 0.8 : 0.3)
+      ..strokeWidth = 2.5
+      ..strokeCap = StrokeCap.round;
+
+    const barCount = 20;
+    final barWidth = size.width / barCount;
+    final centerY = size.height / 2;
+
+    for (int i = 0; i < barCount; i++) {
+      final x = i * barWidth + barWidth / 2;
+
+      // Создаем волнообразный паттерн
+      final wave = math.sin((i / barCount) * math.pi * 2 +
+          (isPlaying ? animation.value * math.pi * 4 : 0));
+
+      final baseHeight = size.height * 0.2;
+      final maxHeight = size.height * 0.7;
+      final height = baseHeight + (wave.abs() * (maxHeight - baseHeight));
+
+      final top = centerY - height / 2;
+      final bottom = centerY + height / 2;
+
+      canvas.drawLine(
+        Offset(x, top),
+        Offset(x, bottom),
+        paint,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(SoundWavesPainter oldDelegate) {
+    return oldDelegate.animation != animation ||
+        oldDelegate.isPlaying != isPlaying;
   }
 }
