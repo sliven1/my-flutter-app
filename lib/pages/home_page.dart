@@ -58,21 +58,48 @@ class _HomePageState extends State<HomePage> {
 
   Widget _buildUserListItem(Map<String, dynamic> data, BuildContext context) {
     final avatarUrl = data['avatarUrl'] as String?;
-    if (data['uid'] != _auth.getCurrentUid()){
-      return UserTile(
-        text: data[("username")],
-        avatarUrl: avatarUrl,
-        onTap: () {
-          Navigator.push(context,
-              MaterialPageRoute(builder: (context) =>
-                  ChatPage(
-                    receiverUsername: data["username"],
-                    receiverID: data['uid'],
-                  ),
-              ));
+
+    if (data['uid'] != _auth.getCurrentUid()) {
+      return FutureBuilder<Map<String, dynamic>?>(
+        future: _chatService.getLastMessage(_auth.getCurrentUid(), data['uid']),
+        builder: (context, messageSnapshot) {
+          String? lastMessage;
+          DateTime? lastMessageTime;
+
+          if (messageSnapshot.hasData && messageSnapshot.data != null) {
+            final msgData = messageSnapshot.data!;
+            lastMessage = msgData['message'] as String?;
+            lastMessageTime = msgData['timestamp'] as DateTime?;
+          }
+
+          return FutureBuilder<int>(
+            future: _chatService.getUnreadCount(_auth.getCurrentUid(), data['uid']),
+            builder: (context, unreadSnapshot) {
+              final unreadCount = unreadSnapshot.data ?? 0;
+
+              return UserTile(
+                text: data["username"],
+                avatarUrl: avatarUrl,
+                lastMessage: lastMessage,
+                lastMessageTime: lastMessageTime,
+                unreadCount: unreadCount > 0 ? unreadCount : null,
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => ChatPage(
+                        receiverUsername: data["username"],
+                        receiverID: data['uid'],
+                      ),
+                    ),
+                  );
+                },
+              );
+            },
+          );
         },
       );
-    }else{
+    } else {
       return Container();
     }
   }

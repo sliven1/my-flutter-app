@@ -104,7 +104,10 @@ class ChatService extends ChangeNotifier{
     await _firestore.collection("chat_room")
         .doc(chatRoomId)
         .collection("messages")
-        .add(newMessage.toMap());
+        .add({
+      ...newMessage.toMap(),
+      'isRead': false,
+    });
   }
 
   Stream<QuerySnapshot> getMessage(String userId, otherUserId){
@@ -115,6 +118,76 @@ class ChatService extends ChangeNotifier{
 
     return _firestore.collection("chat_room").doc(ChatRoomId).
     collection("messages").orderBy("timestamp", descending: false).snapshots();
+  }
+
+  Future<Map<String, dynamic>?> getLastMessage(String userID1, String userID2) async {
+    try{
+      List<String> ids = [userID1, userID2];
+      ids.sort();
+      String chatRoomID = ids.join('_');
+
+      final snapshot = await _firestore
+          .collection("chat_room")
+          .doc(chatRoomID)
+          .collection("messages")
+          .orderBy("timestamp", descending: true)
+          .limit(1)
+          .get();
+      if (snapshot.docs.isEmpty) return null;
+
+      final doc = snapshot.docs.first;
+      final data = doc.data();
+
+       return {
+         'message': data['message']??'',
+         'timestamp': (data['timestamp'] as Timestamp).toDate(),
+         'senderID': data['senderID']??'',
+       };
+    }catch(e){
+      print('Ошибка сообщение не найдено: $e');
+      return null;
+    }
+  }
+
+  Future<int> getUnreadCount(String userID1, String userID2) async{
+    try{
+      List<String> ids = [userID1,userID2];
+      ids.sort();
+      String chatRoomID = ids.join("_");
+
+      final snapshot = await _firestore
+          .collection("chat_room")
+          .doc(chatRoomID)
+          .collection("message")
+          .where("senderID", isEqualTo: userID2)
+          .where("isRead", isEqualTo: false)
+          .get();
+      return snapshot.docs.length;
+    }catch (e) {
+      print('Ошибка получения не прочитанных сообщений $e');
+      return 0;
+    }
+  }
+
+  Future<void> markMessagesAsRead(String userID1, String userID2) async {
+    try{
+      List<String> ids = [userID1, userID1];
+      ids.sort();
+      String chatRoomID = ids.join("_");
+
+      final snapshot = await _firestore
+          .collection("chat_room")
+          .doc(chatRoomID)
+          .collection("message")
+          .where("senderID", isEqualTo: userID2)
+          .where("idRead", isEqualTo: false)
+          .get();
+      for (var doc in snapshot.docs){
+        await doc.reference.update({'isRead':true});
+      }
+    }catch(e){
+      print('Ошибка с маркером не прочитонных сообщений: $e');
+    }
   }
 
   Future<void> reportUser(String messageID, String userID) async {
@@ -156,4 +229,5 @@ class ChatService extends ChangeNotifier{
     });
 
   }
+
 }

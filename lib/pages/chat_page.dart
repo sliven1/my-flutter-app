@@ -1,20 +1,16 @@
-
-
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_sound/flutter_sound.dart'  as fs;
-
 import 'package:image_picker/image_picker.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:permission_handler/permission_handler.dart';
+import 'package:flutter_sound/flutter_sound.dart' as fs;
 import 'package:p7/components/chat_bubble.dart';
 import 'package:p7/components/my_text_field.dart';
 import 'package:p7/service/auth.dart';
 import 'package:p7/service/chat_service.dart';
-import 'package:path_provider/path_provider.dart';
-import 'package:permission_handler/permission_handler.dart';
+import 'package:p7/service/cloudinary_service.dart';
 import '../components/audio_player_widget.dart';
 import '../models/messenge.dart';
-import '../service/cloudinary_service.dart';
-
 
 class ChatPage extends StatefulWidget {
   final String receiverUsername;
@@ -42,7 +38,6 @@ class _ChatPageState extends State<ChatPage> {
   bool _isRecording = false;
   final fs.FlutterSoundRecorder _recorder = fs.FlutterSoundRecorder();
 
-
   @override
   void initState() {
     super.initState();
@@ -54,6 +49,9 @@ class _ChatPageState extends State<ChatPage> {
         Future.delayed(const Duration(milliseconds: 500), _scrollToBottom);
       }
     });
+
+    // ✅ Отмечаем все сообщения как прочитанные при открытии чата
+    _markMessagesAsRead();
   }
 
   @override
@@ -62,9 +60,21 @@ class _ChatPageState extends State<ChatPage> {
     _controller.dispose();
     _scrollController.dispose();
     _hasTextNotifier.dispose();
+    _recorder.closeRecorder();
     super.dispose();
   }
 
+  // ✅ Метод для отметки сообщений как прочитанных
+  Future<void> _markMessagesAsRead() async {
+    try {
+      await _chatService.markMessagesAsRead(
+        _auth.getCurrentUid(),
+        widget.receiverID,
+      );
+    } catch (e) {
+      print('Error marking messages as read: $e');
+    }
+  }
 
   Future<void> _sendMessage() async {
     final text = _controller.text.trim();
@@ -87,14 +97,15 @@ class _ChatPageState extends State<ChatPage> {
         receiverId: widget.receiverID,
         imageUrl: imageUrl,
       );
+      _scrollToBottom();
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Error uploading image')),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Error uploading image')),
+        );
+      }
     }
   }
-
-
 
   Future<bool> _checkPermission() async {
     var status = await Permission.microphone.status;
@@ -103,19 +114,19 @@ class _ChatPageState extends State<ChatPage> {
       final go = await showDialog<bool>(
         context: context,
         builder: (_) => AlertDialog(
-          title: const Text('Microphone Blocked'),
+          title: const Text('Микрофон заблокирован'),
           content: const Text(
-              'Microphone access has been permanently denied.\n'
-                  'Please open settings and allow microphone access.'
+              'Доступ к микрофону постоянно запрещён.\n'
+                  'Откройте настройки и разрешите доступ к микрофону.'
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context, false),
-              child: const Text('Cancel'),
+              child: const Text('Отмена'),
             ),
             TextButton(
               onPressed: () => Navigator.pop(context, true),
-              child: const Text('Open Settings'),
+              child: const Text('Открыть настройки'),
             ),
           ],
         ),
@@ -136,9 +147,11 @@ class _ChatPageState extends State<ChatPage> {
 
   Future<void> _startRecording() async {
     if (!await _checkPermission()) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Microphone permission required')),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Требуется доступ к микрофону')),
+        );
+      }
       return;
     }
 
@@ -159,9 +172,11 @@ class _ChatPageState extends State<ChatPage> {
         setState(() => _isRecording = true);
       }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Recording error: $e')),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Ошибка записи: $e')),
+        );
+      }
     }
   }
 
@@ -178,12 +193,13 @@ class _ChatPageState extends State<ChatPage> {
             url,
             type: 'audio',
           );
+          _scrollToBottom();
         }
       }
     } catch (e) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error stopping recording: $e')),
+          SnackBar(content: Text('Ошибка остановки записи: $e')),
         );
       }
     } finally {
@@ -191,15 +207,14 @@ class _ChatPageState extends State<ChatPage> {
     }
   }
 
-
   void _scrollToBottom() {
     if (!_scrollController.hasClients) return;
 
-    Future.delayed(const Duration(milliseconds: 500), () {
+    Future.delayed(const Duration(milliseconds: 300), () {
       if (_scrollController.hasClients) {
         _scrollController.animateTo(
           _scrollController.position.maxScrollExtent,
-          duration: const Duration(milliseconds: 500),
+          duration: const Duration(milliseconds: 300),
           curve: Curves.easeOut,
         );
       }
@@ -218,6 +233,7 @@ class _ChatPageState extends State<ChatPage> {
           style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
         ),
         centerTitle: true,
+        backgroundColor: Theme.of(context).colorScheme.surface,
       ),
       body: Column(
         children: [
@@ -227,20 +243,54 @@ class _ChatPageState extends State<ChatPage> {
               stream: _chatService.getMessage(myId, widget.receiverID),
               builder: (ctx, snap) {
                 if (snap.hasError) {
-                  return Center(child: Text("Ошибка загрузки"));
+                  return const Center(child: Text("Ошибка загрузки"));
                 }
                 if (snap.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator());
+                  return Center(
+                    child: CircularProgressIndicator(
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
+                  );
                 }
                 final docs = snap.data!.docs;
                 if (docs.isEmpty) {
-                  return Center(child: Text("Нет сообщений"));
+                  return Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.chat_bubble_outline,
+                          size: 64,
+                          color: Theme.of(context).colorScheme.secondary,
+                        ),
+                        const SizedBox(height: 16),
+                        Text(
+                          "Нет сообщений",
+                          style: TextStyle(
+                            color: Theme.of(context).colorScheme.secondary,
+                            fontSize: 16,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          "Начните общение!",
+                          style: TextStyle(
+                            color: Theme.of(context).colorScheme.secondary.withOpacity(0.7),
+                            fontSize: 14,
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
                 }
+
                 WidgetsBinding.instance.addPostFrameCallback((_) {
                   _scrollToBottom();
                 });
+
                 return ListView.builder(
                   controller: _scrollController,
+                  padding: const EdgeInsets.symmetric(vertical: 10),
                   itemCount: docs.length,
                   itemBuilder: (_, i) {
                     final doc = docs[i];
@@ -248,16 +298,21 @@ class _ChatPageState extends State<ChatPage> {
                     final msg = Message.fromMap(data);
                     final isMine = msg.senderID == myId;
 
-
-                    // ➡️ Отображение сообщений
+                    // Отображение сообщений
                     if (msg.type == 'audio') {
-                      return Align(
-                        alignment: isMine ? Alignment.centerRight : Alignment.centerLeft,
-                        child: ChatAudioPlayer(url: msg.message, isCurrentUser: isMine,),
+                      return Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        child: Align(
+                          alignment: isMine ? Alignment.centerRight : Alignment.centerLeft,
+                          child: ChatAudioPlayer(
+                            url: msg.message,
+                            isCurrentUser: isMine,
+                          ),
+                        ),
                       );
                     } else if (msg.type == 'image') {
                       return Padding(
-                        padding: const EdgeInsets.all(8.0),
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                         child: Align(
                           alignment: isMine ? Alignment.centerRight : Alignment.centerLeft,
                           child: ClipRRect(
@@ -267,18 +322,46 @@ class _ChatPageState extends State<ChatPage> {
                               width: 200,
                               height: 200,
                               fit: BoxFit.cover,
+                              loadingBuilder: (context, child, loadingProgress) {
+                                if (loadingProgress == null) return child;
+                                return Container(
+                                  width: 200,
+                                  height: 200,
+                                  color: Theme.of(context).colorScheme.secondary.withOpacity(0.1),
+                                  child: Center(
+                                    child: CircularProgressIndicator(
+                                      value: loadingProgress.expectedTotalBytes != null
+                                          ? loadingProgress.cumulativeBytesLoaded /
+                                          loadingProgress.expectedTotalBytes!
+                                          : null,
+                                      color: Theme.of(context).colorScheme.primary,
+                                    ),
+                                  ),
+                                );
+                              },
+                              errorBuilder: (context, error, stackTrace) {
+                                return Container(
+                                  width: 200,
+                                  height: 200,
+                                  color: Theme.of(context).colorScheme.secondary.withOpacity(0.1),
+                                  child: const Icon(Icons.error),
+                                );
+                              },
                             ),
                           ),
                         ),
                       );
                     } else {
-                      return Align(
-                        alignment: isMine ? Alignment.centerRight : Alignment.centerLeft,
-                        child: ChatBubble(
-                          message: msg.message,
-                          isCurrentUser: isMine,
-                          userID: msg.senderID,
-                          messageID: doc.id,
+                      return Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                        child: Align(
+                          alignment: isMine ? Alignment.centerRight : Alignment.centerLeft,
+                          child: ChatBubble(
+                            message: msg.message,
+                            isCurrentUser: isMine,
+                            userID: msg.senderID,
+                            messageID: doc.id,
+                          ),
                         ),
                       );
                     }
@@ -292,6 +375,15 @@ class _ChatPageState extends State<ChatPage> {
           Container(
             margin: const EdgeInsets.only(bottom: 8),
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.surface,
+              border: Border(
+                top: BorderSide(
+                  color: Theme.of(context).colorScheme.primaryContainer,
+                  width: 0.5,
+                ),
+              ),
+            ),
             child: ValueListenableBuilder<bool>(
               valueListenable: _hasTextNotifier,
               builder: (context, hasText, _) {
@@ -299,13 +391,17 @@ class _ChatPageState extends State<ChatPage> {
                   children: [
                     IconButton(
                       onPressed: sendImageMessage,
-                      icon: Icon(Icons.photo, size: 32, color: Theme.of(context).colorScheme.onSurface),
+                      icon: Icon(
+                        Icons.photo,
+                        size: 28,
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
                     ),
                     Expanded(
                       child: MyTextField(
                         textEditingController: _controller,
                         obscureText: false,
-                        hintText: "Message",
+                        hintText: "Сообщение",
                         focusNode: _focusNode,
                       ),
                     ),
@@ -317,31 +413,35 @@ class _ChatPageState extends State<ChatPage> {
                           ? Container(
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
-                          gradient: const LinearGradient(
-                            colors: [Color(0xFF37aee2), Color(0xFF1E96C8)],
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
-                          ),
+                          color: Theme.of(context).colorScheme.primary,
                           boxShadow: [
                             BoxShadow(
-                              color: Colors.black26,
-                              blurRadius: 4,
-                              offset: Offset(0, 2),
+                              color: Theme.of(context).colorScheme.primary.withOpacity(0.3),
+                              blurRadius: 8,
+                              offset: const Offset(0, 2),
                             ),
                           ],
                         ),
                         child: IconButton(
                           onPressed: _sendMessage,
-                          icon: const Icon(Icons.send_rounded, color: Colors.white, size: 22),
+                          icon: Icon(
+                            Icons.send_rounded,
+                            color: Theme.of(context).colorScheme.onPrimary,
+                            size: 22,
+                          ),
                           splashRadius: 24,
                         ),
                       )
                           : IconButton(
-                        onPressed: _isRecording ? _stopRecordingAndSend : _startRecording,
+                        onPressed: _isRecording
+                            ? _stopRecordingAndSend
+                            : _startRecording,
                         icon: Icon(
-                          _isRecording ? Icons.stop : Icons.keyboard_voice_sharp,
-                          size: 32,
-                          color: Theme.of(context).colorScheme.onSurface,
+                          _isRecording ? Icons.stop_circle : Icons.mic,
+                          size: 28,
+                          color: _isRecording
+                              ? Colors.red
+                              : Theme.of(context).colorScheme.primary,
                         ),
                         splashRadius: 24,
                       ),

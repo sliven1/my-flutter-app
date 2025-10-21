@@ -1,6 +1,4 @@
-
 import 'package:cloud_firestore/cloud_firestore.dart';
-
 
 class Message {
   final String senderID;
@@ -12,6 +10,7 @@ class Message {
   final String? fileName;
   final int? fileSize;
   final Duration? duration;
+  final bool isRead;
 
   Message({
     required this.senderID,
@@ -23,6 +22,7 @@ class Message {
     this.fileName,
     this.fileSize,
     this.duration,
+    this.isRead = false,  // По умолчанию false
   }) : assert(type == 'text' || type == 'image' || type == 'audio');
 
   Map<String, dynamic> toMap() {
@@ -36,6 +36,7 @@ class Message {
       'fileName': fileName,
       'fileSize': fileSize,
       'duration': duration?.inSeconds,
+      'isRead': isRead,  // Добавлено
     };
   }
 
@@ -52,10 +53,38 @@ class Message {
       duration: map['duration'] != null
           ? Duration(seconds: map['duration'] as int)
           : null,
+      isRead: map['isRead'] ?? false,  // Добавлено
     );
   }
 
   bool get isText => type == 'text';
   bool get isImage => type == 'image';
   bool get isAudio => type == 'audio';
+
+  // Удобный метод для копирования с изменением isRead
+  Message copyWith({
+    String? senderID,
+    String? senderEmail,
+    String? receiverID,
+    String? message,
+    Timestamp? timestamp,
+    String? type,
+    String? fileName,
+    int? fileSize,
+    Duration? duration,
+    bool? isRead,
+  }) {
+    return Message(
+      senderID: senderID ?? this.senderID,
+      senderEmail: senderEmail ?? this.senderEmail,
+      receiverID: receiverID ?? this.receiverID,
+      message: message ?? this.message,
+      timestamp: timestamp ?? this.timestamp,
+      type: type ?? this.type,
+      fileName: fileName ?? this.fileName,
+      fileSize: fileSize ?? this.fileSize,
+      duration: duration ?? this.duration,
+      isRead: isRead ?? this.isRead,
+    );
+  }
 }
