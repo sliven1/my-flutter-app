@@ -1,14 +1,18 @@
 import 'package:audioplayers/audioplayers.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'dart:math' as math;
 
 class ChatAudioPlayer extends StatefulWidget {
   final String url;
   final bool isCurrentUser;
+  final Timestamp? timestamp;
+
   const ChatAudioPlayer({
     super.key,
     required this.url,
     required this.isCurrentUser,
+    this.timestamp,
   });
 
   @override
@@ -85,10 +89,20 @@ class _ChatAudioPlayerState extends State<ChatAudioPlayer> with SingleTickerProv
     super.dispose();
   }
 
-  String _format(Duration d) {
+  String _formatDuration(Duration d) {
     final m = d.inMinutes.toString().padLeft(2, '0');
     final s = d.inSeconds.remainder(60).toString().padLeft(2, '0');
     return '$m:$s';
+  }
+
+  String _formatTime(Timestamp? timestamp) {
+    if (timestamp == null) return '';
+
+    final date = timestamp.toDate();
+    final hour = date.hour.toString().padLeft(2, '0');
+    final minute = date.minute.toString().padLeft(2, '0');
+
+    return '$hour:$minute';
   }
 
   @override
@@ -118,7 +132,7 @@ class _ChatAudioPlayerState extends State<ChatAudioPlayer> with SingleTickerProv
       child: Container(
         padding: const EdgeInsets.all(10),
         margin: const EdgeInsets.symmetric(vertical: 3, horizontal: 12),
-        constraints: const BoxConstraints(maxWidth: 220),
+        constraints: const BoxConstraints(maxWidth: 240),
         decoration: BoxDecoration(
           color: bubbleColor,
           borderRadius: BorderRadius.circular(18),
@@ -130,123 +144,145 @@ class _ChatAudioPlayerState extends State<ChatAudioPlayer> with SingleTickerProv
             ),
           ],
         ),
-        child: Row(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
-            // Кнопка с пульсирующей анимацией
-            Stack(
-              alignment: Alignment.center,
+            // Основной контент (кнопка + волны)
+            Row(
+              mainAxisSize: MainAxisSize.min,
               children: [
-                // Пульсирующие круги при воспроизведении
-                if (_isPlaying)
-                  AnimatedBuilder(
-                    animation: _rippleController,
-                    builder: (context, child) {
-                      return CustomPaint(
-                        painter: RipplePainter(
-                          animation: _rippleController,
-                          color: iconColor,
-                        ),
-                        size: const Size(50, 50),
-                      );
-                    },
-                  ),
+                // Кнопка с пульсирующей анимацией
+                Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    // Пульсирующие круги при воспроизведении
+                    if (_isPlaying)
+                      AnimatedBuilder(
+                        animation: _rippleController,
+                        builder: (context, child) {
+                          return CustomPaint(
+                            painter: RipplePainter(
+                              animation: _rippleController,
+                              color: iconColor,
+                            ),
+                            size: const Size(50, 50),
+                          );
+                        },
+                      ),
 
-                // Кнопка
-                GestureDetector(
-                  onTap: _togglePlay,
-                  child: Container(
-                    width: 40,
-                    height: 40,
-                    decoration: BoxDecoration(
-                      color: widget.isCurrentUser
-                          ? Colors.white.withValues(alpha: 0.25)
-                          : scheme.primaryContainer,
-                      shape: BoxShape.circle,
-                    ),
-                    child: AnimatedSwitcher(
-                      duration: const Duration(milliseconds: 200),
-                      transitionBuilder: (child, animation) {
-                        return ScaleTransition(
-                          scale: animation,
-                          child: RotationTransition(
-                            turns: animation,
-                            child: child,
+                    // Кнопка
+                    GestureDetector(
+                      onTap: _togglePlay,
+                      child: Container(
+                        width: 40,
+                        height: 40,
+                        decoration: BoxDecoration(
+                          color: widget.isCurrentUser
+                              ? Colors.white.withValues(alpha: 0.25)
+                              : scheme.primaryContainer,
+                          shape: BoxShape.circle,
+                        ),
+                        child: AnimatedSwitcher(
+                          duration: const Duration(milliseconds: 200),
+                          transitionBuilder: (child, animation) {
+                            return ScaleTransition(
+                              scale: animation,
+                              child: RotationTransition(
+                                turns: animation,
+                                child: child,
+                              ),
+                            );
+                          },
+                          child: Icon(
+                            _isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                            key: ValueKey(_isPlaying),
+                            color: iconColor,
+                            size: 22,
                           ),
-                        );
-                      },
-                      child: Icon(
-                        _isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
-                        key: ValueKey(_isPlaying),
-                        color: iconColor,
-                        size: 22,
+                        ),
                       ),
                     ),
+                  ],
+                ),
+                const SizedBox(width: 12),
+
+                // Прогресс и волны
+                Flexible(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // Анимированные звуковые волны
+                      SizedBox(
+                        height: 24,
+                        child: AnimatedBuilder(
+                          animation: _rippleController,
+                          builder: (context, child) {
+                            return CustomPaint(
+                              painter: SoundWavesPainter(
+                                animation: _rippleController,
+                                color: progressColor,
+                                isPlaying: _isPlaying,
+                              ),
+                              size: const Size(double.infinity, 24),
+                            );
+                          },
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+
+                      // Прогресс бар
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(2),
+                        child: SizedBox(
+                          height: 3,
+                          child: LinearProgressIndicator(
+                            value: _duration.inSeconds == 0
+                                ? 0
+                                : _position.inSeconds / _duration.inSeconds,
+                            color: progressColor,
+                            backgroundColor: widget.isCurrentUser
+                                ? Colors.white.withValues(alpha: 0.25)
+                                : scheme.surface,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+
+                      // Длительность аудио
+                      Text(
+                        _position.inSeconds > 0
+                            ? _formatDuration(_duration - _position)
+                            : _formatDuration(_duration),
+                        style: TextStyle(
+                          color: textColor.withValues(alpha: 0.9),
+                          fontSize: 11,
+                          fontWeight: FontWeight.w500,
+                          letterSpacing: 0.3,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
+                const SizedBox(width: 6),
               ],
             ),
-            const SizedBox(width: 12),
 
-            // Прогресс и время
-            Flexible(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  // Анимированные звуковые волны
-                  SizedBox(
-                    height: 24,
-                    child: AnimatedBuilder(
-                      animation: _rippleController,
-                      builder: (context, child) {
-                        return CustomPaint(
-                          painter: SoundWavesPainter(
-                            animation: _rippleController,
-                            color: progressColor,
-                            isPlaying: _isPlaying,
-                          ),
-                          size: const Size(double.infinity, 24),
-                        );
-                      },
-                    ),
+            // Время отправки (как в текстовых сообщениях)
+            if (widget.timestamp != null) ...[
+              const SizedBox(height: 4),
+              Align(
+                alignment: Alignment.bottomRight,
+                child: Text(
+                  _formatTime(widget.timestamp),
+                  style: TextStyle(
+                    color: textColor.withValues(alpha: 0.7),
+                    fontSize: 11,
                   ),
-                  const SizedBox(height: 6),
-
-                  // Прогресс бар
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(2),
-                    child: SizedBox(
-                      height: 3,
-                      child: LinearProgressIndicator(
-                        value: _duration.inSeconds == 0
-                            ? 0
-                            : _position.inSeconds / _duration.inSeconds,
-                        color: progressColor,
-                        backgroundColor: widget.isCurrentUser
-                            ? Colors.white.withValues(alpha: 0.25)
-                            : scheme.surface,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-
-                  // Время (как в Telegram)
-                  Text(
-                    _position.inSeconds > 0
-                        ? _format(_duration - _position)
-                        : _format(_duration),
-                    style: TextStyle(
-                      color: textColor.withValues(alpha: 0.9),
-                      fontSize: 11,
-                      fontWeight: FontWeight.w500,
-                      letterSpacing: 0.3,
-                    ),
-                  ),
-                ],
+                ),
               ),
-            ),
-            const SizedBox(width: 6),
+            ],
           ],
         ),
       ),

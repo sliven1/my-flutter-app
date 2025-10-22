@@ -1,6 +1,5 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:p7/components/load_animation.dart';
 import 'package:p7/components/my_button.dart';
 import 'package:p7/components/my_text_field.dart';
 import 'package:p7/service/auth.dart';
@@ -27,6 +26,8 @@ class _RegisterPageState extends State<RegisterPage> {
   final FocusNode confirmFocus = FocusNode();
 
   bool _isLoading = false;
+  bool _obscurePassword = true;
+  bool _obscureConfirm = true;
 
   @override
   void dispose() {
@@ -70,6 +71,33 @@ class _RegisterPageState extends State<RegisterPage> {
     return null;
   }
 
+  void _showSnackBar(String message, {bool isError = false}) {
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            Icon(
+              isError ? Icons.error_outline : Icons.check_circle_outline,
+              color: Colors.white,
+            ),
+            const SizedBox(width: 12),
+            Expanded(child: Text(message)),
+          ],
+        ),
+        backgroundColor: isError
+            ? Theme.of(context).colorScheme.error
+            : Colors.green,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+        ),
+        duration: const Duration(seconds: 3),
+      ),
+    );
+  }
+
   void _continueToProfile() async {
     FocusScope.of(context).unfocus();
 
@@ -77,7 +105,6 @@ class _RegisterPageState extends State<RegisterPage> {
       return;
     }
 
-    // Показываем загрузку только в UI кнопки
     setState(() => _isLoading = true);
 
     try {
@@ -89,7 +116,6 @@ class _RegisterPageState extends State<RegisterPage> {
       if (mounted) {
         setState(() => _isLoading = false);
 
-        // Переходим без анимации загрузки
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(
@@ -118,136 +144,234 @@ class _RegisterPageState extends State<RegisterPage> {
             message = 'Ошибка регистрации: ${e.message ?? e.code}';
         }
 
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(message),
-            backgroundColor: Colors.red,
-          ),
-        );
+        _showSnackBar(message, isError: true);
       }
     } catch (e) {
       if (mounted) {
         setState(() => _isLoading = false);
-
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Что-то пошло не так'),
-            backgroundColor: Colors.red,
-          ),
-        );
+        _showSnackBar('Что-то пошло не так', isError: true);
       }
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+
     return Scaffold(
-      backgroundColor: Theme.of(context).colorScheme.surface,
+      backgroundColor: scheme.surface,
       body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 25.0),
-          child: Form(
-            key: _formKey,
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const SizedBox(height: 50),
-                Icon(
-                  Icons.person_add_rounded,
-                  size: 72,
-                  color: Theme.of(context).colorScheme.primary,
-                ),
-                const SizedBox(height: 30),
-                Text(
-                  "Создайте аккаунт",
-                  style: TextStyle(
-                    color: Theme.of(context).colorScheme.primary,
-                    fontSize: 24,
-                    fontWeight: FontWeight.bold,
+        child: Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.symmetric(horizontal: 24.0),
+            child: Form(
+              key: _formKey,
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const SizedBox(height: 30),
+
+                  // Логотип с анимацией
+                  TweenAnimationBuilder<double>(
+                    tween: Tween(begin: 0.0, end: 1.0),
+                    duration: const Duration(milliseconds: 600),
+                    builder: (context, value, child) {
+                      return Transform.scale(
+                        scale: value,
+                        child: Container(
+                          padding: const EdgeInsets.all(20),
+                          decoration: BoxDecoration(
+                            color: scheme.primaryContainer,
+                            shape: BoxShape.circle,
+                          ),
+                          child: Icon(
+                            Icons.person_add_rounded,
+                            size: 60,
+                            color: scheme.primary,
+                          ),
+                        ),
+                      );
+                    },
                   ),
-                ),
-                const SizedBox(height: 10),
-                Text(
-                  "Шаг 1 из 2",
-                  style: TextStyle(
-                    color: Theme.of(context).colorScheme.primary,
-                    fontSize: 16,
+
+                  const SizedBox(height: 40),
+
+                  Text(
+                    "Создайте аккаунт",
+                    style: TextStyle(
+                      color: scheme.onSurface,
+                      fontSize: 28,
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: -0.5,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 40),
 
-                MyTextField(
-                  textEditingController: emailController,
-                  obscureText: false,
-                  hintText: "Email",
-                  focusNode: emailFocus,
-                  keyboardType: TextInputType.emailAddress,
-                  textInputAction: TextInputAction.next,
-                  onFieldSubmitted: (_) {
-                    FocusScope.of(context).requestFocus(pwFocus);
-                  },
-                  validator: _validateEmail,
-                ),
+                  const SizedBox(height: 8),
 
-                const SizedBox(height: 15),
-
-                MyTextField(
-                  textEditingController: pwController,
-                  obscureText: true,
-                  hintText: "Пароль",
-                  focusNode: pwFocus,
-                  textInputAction: TextInputAction.next,
-                  onFieldSubmitted: (_) {
-                    FocusScope.of(context).requestFocus(confirmFocus);
-                  },
-                  validator: _validatePassword,
-                ),
-
-                const SizedBox(height: 15),
-
-                MyTextField(
-                  textEditingController: confirmController,
-                  obscureText: true,
-                  hintText: "Подтвердите пароль",
-                  focusNode: confirmFocus,
-                  textInputAction: TextInputAction.done,
-                  onFieldSubmitted: (_) => _continueToProfile(),
-                  validator: _validateConfirmPassword,
-                ),
-
-                const SizedBox(height: 30),
-
-                MyButton(
-                  onTap: _isLoading ? null : _continueToProfile,
-                  text: _isLoading ? "Загрузка..." : "Далее",
-                ),
-
-                const SizedBox(height: 30),
-
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text(
-                      "Уже есть аккаунт?",
+                  // Индикатор шага
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 6,
+                    ),
+                    decoration: BoxDecoration(
+                      color: scheme.primaryContainer,
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Text(
+                      "Шаг 1 из 2",
                       style: TextStyle(
-                        color: Theme.of(context).colorScheme.primary,
+                        color: scheme.primary,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
                       ),
                     ),
-                    const SizedBox(width: 10),
-                    GestureDetector(
-                      onTap: widget.onTap,
-                      child: Text(
-                        "Войти",
+                  ),
+
+                  const SizedBox(height: 40),
+
+                  MyTextField(
+                    textEditingController: emailController,
+                    obscureText: false,
+                    hintText: "Email",
+                    label: "Email",
+                    prefixIcon: const Icon(Icons.email_outlined),
+                    focusNode: emailFocus,
+                    keyboardType: TextInputType.emailAddress,
+                    textInputAction: TextInputAction.next,
+                    onFieldSubmitted: (_) {
+                      FocusScope.of(context).requestFocus(pwFocus);
+                    },
+                    validator: _validateEmail,
+                  ),
+
+                  const SizedBox(height: 16),
+
+                  MyTextField(
+                    textEditingController: pwController,
+                    obscureText: _obscurePassword,
+                    hintText: "Пароль",
+                    label: "Пароль",
+                    prefixIcon: const Icon(Icons.lock_outline),
+                    suffixIcon: IconButton(
+                      icon: Icon(
+                        _obscurePassword
+                            ? Icons.visibility_outlined
+                            : Icons.visibility_off_outlined,
+                      ),
+                      onPressed: () {
+                        setState(() {
+                          _obscurePassword = !_obscurePassword;
+                        });
+                      },
+                    ),
+                    focusNode: pwFocus,
+                    textInputAction: TextInputAction.next,
+                    onFieldSubmitted: (_) {
+                      FocusScope.of(context).requestFocus(confirmFocus);
+                    },
+                    validator: _validatePassword,
+                  ),
+
+                  const SizedBox(height: 16),
+
+                  MyTextField(
+                    textEditingController: confirmController,
+                    obscureText: _obscureConfirm,
+                    hintText: "Подтвердите пароль",
+                    label: "Подтвердите пароль",
+                    prefixIcon: const Icon(Icons.lock_outline),
+                    suffixIcon: IconButton(
+                      icon: Icon(
+                        _obscureConfirm
+                            ? Icons.visibility_outlined
+                            : Icons.visibility_off_outlined,
+                      ),
+                      onPressed: () {
+                        setState(() {
+                          _obscureConfirm = !_obscureConfirm;
+                        });
+                      },
+                    ),
+                    focusNode: confirmFocus,
+                    textInputAction: TextInputAction.done,
+                    onFieldSubmitted: (_) => _continueToProfile(),
+                    validator: _validateConfirmPassword,
+                  ),
+
+                  const SizedBox(height: 12),
+
+                  // Требования к паролю
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: scheme.primaryContainer.withValues(alpha: 0.3),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: scheme.primary.withValues(alpha: 0.2),
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.info_outline,
+                          size: 18,
+                          color: scheme.primary,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'Пароль должен содержать минимум 6 символов',
+                            style: TextStyle(
+                              color: scheme.secondary,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  const SizedBox(height: 30),
+
+                  MyButton(
+                    onTap: _isLoading ? null : _continueToProfile,
+                    text: _isLoading ? "Загрузка..." : "Далее",
+                  ),
+
+                  const SizedBox(height: 40),
+
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        "Уже есть аккаунт?",
                         style: TextStyle(
-                          color: Theme.of(context).colorScheme.primary,
-                          fontWeight: FontWeight.bold,
+                          color: scheme.secondary,
+                          fontSize: 15,
                         ),
                       ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 50),
-              ],
+                      const SizedBox(width: 6),
+                      TextButton(
+                        onPressed: widget.onTap,
+                        style: TextButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(horizontal: 8),
+                        ),
+                        child: Text(
+                          "Войти",
+                          style: TextStyle(
+                            color: scheme.primary,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 15,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+
+                  const SizedBox(height: 30),
+                ],
+              ),
             ),
           ),
         ),
