@@ -39,6 +39,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
 
   bool _isRecording = false;
   final Map<String, double> _uploadingFiles = {};
+  final Set<String> _cancelledUploads = {};
   List<DocumentSnapshot> _cachedMessages = [];
 
   bool _isUserScrolling = false;
@@ -93,6 +94,10 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     if (_scrollController.hasClients && _isUserScrolling) {
       _scrollPositions[_chatKey] = _scrollController.position.pixels;
     }
+    // Отменяем все активные загрузки
+    _cancelledUploads.addAll(_uploadingFiles.keys);
+    _uploadingFiles.clear();
+
     WidgetsBinding.instance.removeObserver(this);
     _focusNode.dispose();
     _controller.dispose();
@@ -177,6 +182,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       if (mounted) {
         setState(() {
           _uploadingFiles.remove(localId);
+          _cancelledUploads.remove(localId);
         });
       }
     }
@@ -184,20 +190,13 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
 
   void _simulateProgress(String localId) {
     Future.delayed(const Duration(milliseconds: 100), () {
+      if (_cancelledUploads.contains(localId)) return;
       if (_uploadingFiles.containsKey(localId) && mounted) {
         setState(() {
           _uploadingFiles[localId] = (_uploadingFiles[localId]! + 0.1).clamp(0.0, 1.0);
         });
         if (_uploadingFiles[localId]! < 1.0) {
           _simulateProgress(localId);
-        } else {
-          Future.delayed(const Duration(milliseconds: 500), () {
-            if (mounted && _uploadingFiles.containsKey(localId)) {
-              setState(() {
-                _uploadingFiles.remove(localId);
-              });
-            }
-          });
         }
       }
     });
@@ -249,6 +248,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     var status = await Permission.microphone.status;
 
     if (status.isPermanentlyDenied) {
+      if (!mounted) return false;
       final go = await showDialog<bool>(
         context: context,
         builder: (_) => AlertDialog(
@@ -309,25 +309,27 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
 
   Future<void> _stopRecordingAndSend() async {
     if (!mounted) return;
+
+    String? localId;
     try {
       final result = await _recorder.stopRecorder();
       setState(() => _isRecording = false);
 
       if (result != null) {
-        final localId = DateTime.now().millisecondsSinceEpoch.toString();
+        final uploadId = DateTime.now().millisecondsSinceEpoch.toString();
+        localId = uploadId;
         setState(() {
-          _uploadingFiles[localId] = 0.0;
+          _uploadingFiles[uploadId] = 0.0;
         });
 
         if (!_isUserScrolling) _scrollToBottom(force: true);
-        _simulateProgress(localId);
+        _simulateProgress(uploadId);
 
         final url = await CloudinaryService.uploadAudio(filePath: result);
         if (url != null && mounted) {
-          await _chatService.sendMessage(
-            widget.receiverID,
-            url,
-            type: 'audio',
+          await _chatService.sendMessageWithAudio(
+            receiverId: widget.receiverID,
+            audioUrl: url,
           );
           if (!_isUserScrolling) _scrollToBottom(force: true);
         } else {
@@ -337,8 +339,16 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     } catch (e) {
       _showError('Ошибка остановки записи: $e');
     } finally {
-      await _recorder.closeRecorder();
-      await _initializeRecorder();
+      if (localId != null && mounted) {
+        setState(() {
+          _uploadingFiles.remove(localId);
+          _cancelledUploads.remove(localId);
+        });
+      }
+      if (mounted) {
+        await _recorder.closeRecorder();
+        await _initializeRecorder();
+      }
     }
   }
 
@@ -383,7 +393,9 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
 
     final savedPosition = _scrollPositions[_chatKey];
     if (savedPosition != null) {
-      _scrollController.jumpTo(savedPosition.clamp(0.0, _scrollController.position.maxScrollExtent));
+      final maxExtent = _scrollController.position.maxScrollExtent;
+      final targetPosition = savedPosition < maxExtent ? savedPosition : maxExtent;
+      _scrollController.jumpTo(targetPosition);
       _isUserScrolling = true;
     } else {
       _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
