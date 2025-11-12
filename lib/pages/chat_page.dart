@@ -62,7 +62,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     _focusNode.addListener(() {
       if (_focusNode.hasFocus && !_isUserScrolling) {
         Future.delayed(const Duration(milliseconds: 300), () {
-          if (mounted && !_isUserScrolling) _scrollToBottom(force: true);
+          if (mounted && !_isUserScrolling) _scrollToBottom(animate: false);
         });
       }
     });
@@ -85,14 +85,24 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     } else {
       _isUserScrolling = false;
       _newMessagesCount = 0;
-      _scrollPositions.remove(_chatKey);
+      // Сохраняем -1 как маркер "внизу", а не удаляем позицию
+      _scrollPositions[_chatKey] = -1;
     }
   }
 
   @override
   void dispose() {
-    if (_scrollController.hasClients && _isUserScrolling) {
-      _scrollPositions[_chatKey] = _scrollController.position.pixels;
+    if (_scrollController.hasClients) {
+      final maxScroll = _scrollController.position.maxScrollExtent;
+      final currentScroll = _scrollController.position.pixels;
+      const threshold = 100.0;
+
+      // Сохраняем позицию: -1 если внизу, иначе реальную позицию
+      if (maxScroll - currentScroll <= threshold) {
+        _scrollPositions[_chatKey] = -1;
+      } else if (_isUserScrolling) {
+        _scrollPositions[_chatKey] = currentScroll;
+      }
     }
     // Отменяем все активные загрузки
     _cancelledUploads.addAll(_uploadingFiles.keys);
@@ -139,7 +149,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
 
     try {
       await _chatService.sendMessage(widget.receiverID, text);
-      if (!_isUserScrolling) _scrollToBottom(force: true);
+      if (!_isUserScrolling) _scrollToBottom(animate: false);
     } catch (e) {
       if (mounted) _showError('Ошибка отправки сообщения');
     }
@@ -162,7 +172,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       _uploadingFiles[localId] = 0.0;
     });
 
-    if (!_isUserScrolling) _scrollToBottom(force: true);
+    if (!_isUserScrolling) _scrollToBottom(animate: false);
 
     try {
       _simulateProgress(localId);
@@ -175,7 +185,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         imageUrl: imageUrl,
       );
 
-      if (!_isUserScrolling) _scrollToBottom(force: true);
+      if (!_isUserScrolling) _scrollToBottom(animate: false);
     } catch (e) {
       if (mounted) _showError('Ошибка загрузки изображения');
     } finally {
@@ -322,7 +332,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
           _uploadingFiles[uploadId] = 0.0;
         });
 
-        if (!_isUserScrolling) _scrollToBottom(force: true);
+        if (!_isUserScrolling) _scrollToBottom(animate: false);
         _simulateProgress(uploadId);
 
         final url = await CloudinaryService.uploadAudio(filePath: result);
@@ -331,7 +341,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
             receiverId: widget.receiverID,
             audioUrl: url,
           );
-          if (!_isUserScrolling) _scrollToBottom(force: true);
+          if (!_isUserScrolling) _scrollToBottom(animate: false);
         } else {
           _showError('Ошибка загрузки аудио');
         }
@@ -367,39 +377,71 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     );
   }
 
-  void _scrollToBottom({bool force = false}) {
+  void _scrollToBottom({bool animate = true}) {
     if (!_scrollController.hasClients || !mounted) return;
 
-    if (force || !_isUserScrolling) {
-      Future.delayed(const Duration(milliseconds: 100), () {
-        if (_scrollController.hasClients && mounted) {
-          _scrollController.animateTo(
-            _scrollController.position.maxScrollExtent,
-            duration: const Duration(milliseconds: 300),
-            curve: Curves.easeOut,
-          );
-          if (mounted) {
-            setState(() {
-              _newMessagesCount = 0;
-            });
-          }
-        }
+    final maxScroll = _scrollController.position.maxScrollExtent;
+    final currentScroll = _scrollController.position.pixels;
+    const threshold = 50.0;
+
+    // Сбрасываем счётчик новых сообщений
+    if (mounted && _newMessagesCount > 0) {
+      setState(() {
+        _newMessagesCount = 0;
       });
+    }
+
+    // Если уже внизу, ничего не делаем
+    if (maxScroll - currentScroll <= 10.0) {
+      return;
+    }
+
+    // Если близко к низу или не нужна анимация - jumpTo
+    if (!animate || maxScroll - currentScroll <= threshold) {
+      _scrollController.jumpTo(maxScroll);
+    } else {
+      // Иначе плавная анимация
+      _scrollController.animateTo(
+        maxScroll,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeOut,
+      );
     }
   }
 
   void _restoreScrollPosition() {
     if (!_scrollController.hasClients || !mounted) return;
 
+    final maxExtent = _scrollController.position.maxScrollExtent;
+    final currentScroll = _scrollController.position.pixels;
     final savedPosition = _scrollPositions[_chatKey];
-    if (savedPosition != null) {
-      final maxExtent = _scrollController.position.maxScrollExtent;
-      final targetPosition = savedPosition < maxExtent ? savedPosition : maxExtent;
-      _scrollController.jumpTo(targetPosition);
-      _isUserScrolling = true;
-    } else {
-      _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
+
+    if (savedPosition == null || savedPosition == -1) {
+      // Нет сохранённой позиции или был внизу -> прокручиваем в низ
+      // Проверяем что maxExtent уже рассчитан и мы еще не внизу
+      if (maxExtent > 0 && (maxExtent - currentScroll > 10.0)) {
+        _scrollController.jumpTo(maxExtent);
+      } else if (maxExtent == 0) {
+        // Если maxExtent еще 0, пробуем снова через небольшую задержку
+        Future.delayed(const Duration(milliseconds: 50), () {
+          if (mounted && _scrollController.hasClients) {
+            final maxExtent = _scrollController.position.maxScrollExtent;
+            final currentScroll = _scrollController.position.pixels;
+            if (maxExtent - currentScroll > 10.0) {
+              _scrollController.jumpTo(maxExtent);
+            }
+          }
+        });
+      }
       _isUserScrolling = false;
+    } else {
+      // Восстанавливаем сохранённую позицию
+      final targetPosition = savedPosition < maxExtent ? savedPosition : maxExtent;
+      // Проверяем что позиция действительно отличается
+      if ((targetPosition - currentScroll).abs() > 1.0) {
+        _scrollController.jumpTo(targetPosition);
+      }
+      _isUserScrolling = true;
     }
   }
 
@@ -506,19 +548,32 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
 
                 WidgetsBinding.instance.addPostFrameCallback((_) {
                   if (_isFirstLoad) {
-                    _restoreScrollPosition();
-                    _isFirstLoad = false;
+                    // Первая загрузка - даем время на построение ListView, затем восстанавливаем позицию
                     _previousMessageCount = currentMessageCount;
+                    // Дополнительная задержка чтобы ListView полностью построился
+                    Future.delayed(const Duration(milliseconds: 50), () {
+                      if (mounted) {
+                        _restoreScrollPosition();
+                        // Отключаем флаг первой загрузки только после восстановления позиции
+                        _isFirstLoad = false;
+                      }
+                    });
                   } else if (currentMessageCount > _previousMessageCount) {
+                    // Появились новые сообщения
                     final newMessagesAdded = currentMessageCount - _previousMessageCount;
-                    if (!_isUserScrolling) {
-                      _scrollToBottom();
-                    } else {
-                      setState(() {
-                        _newMessagesCount += newMessagesAdded;
-                      });
-                    }
                     _previousMessageCount = currentMessageCount;
+
+                    if (!_isUserScrolling) {
+                      // Пользователь внизу - прокручиваем без лишней задержки
+                      if (mounted) _scrollToBottom(animate: true);
+                    } else {
+                      // Пользователь прокрутил вверх - показываем счётчик
+                      if (mounted) {
+                        setState(() {
+                          _newMessagesCount += newMessagesAdded;
+                        });
+                      }
+                    }
                   }
                 });
 
@@ -570,7 +625,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
                                 _isUserScrolling = false;
                                 _newMessagesCount = 0;
                               });
-                              _scrollToBottom(force: true);
+                              _scrollToBottom(animate: true);
                             },
                             customBorder: const CircleBorder(),
                             child: Container(

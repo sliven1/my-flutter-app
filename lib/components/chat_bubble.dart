@@ -214,34 +214,37 @@ class ChatBubble extends StatelessWidget {
                       : const Radius.circular(16),
                 ),
               ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    message,
-                    style: TextStyle(
-                      color: isCurrentUser
-                          ? Theme.of(context).colorScheme.onPrimary
-                          : Theme.of(context).colorScheme.onSurface,
-                      fontSize: 15,
-                    ),
-                  ),
-                  if (timestamp != null) ...[
-                    const SizedBox(height: 4),
-                    Align(
-                      alignment: Alignment.bottomRight,
-                      child: Text(
-                        _formatTime(timestamp),
-                        style: TextStyle(
-                          color: isCurrentUser
-                              ? Theme.of(context).colorScheme.onPrimary.withValues(alpha: 0.7)
-                              : Theme.of(context).colorScheme.secondary,
-                          fontSize: 11,
-                        ),
+              child: IntrinsicWidth(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      message,
+                      style: TextStyle(
+                        color: isCurrentUser
+                            ? Theme.of(context).colorScheme.onPrimary
+                            : Theme.of(context).colorScheme.onSurface,
+                        fontSize: 15,
                       ),
                     ),
+                    if (timestamp != null) ...[
+                      const SizedBox(height: 4),
+                      Align(
+                        alignment: Alignment.bottomRight,
+                        child: Text(
+                          _formatTime(timestamp),
+                          style: TextStyle(
+                            color: isCurrentUser
+                                ? Theme.of(context).colorScheme.onPrimary.withValues(alpha: 0.7)
+                                : Theme.of(context).colorScheme.secondary,
+                            fontSize: 11,
+                          ),
+                        ),
+                      ),
+                    ],
                   ],
-                ],
+                ),
               ),
             ),
           ],
